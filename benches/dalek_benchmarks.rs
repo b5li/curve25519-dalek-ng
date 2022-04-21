@@ -17,7 +17,7 @@ use curve25519_dalek::constants;
 use curve25519_dalek::scalar::Scalar;
 
 static BATCH_SIZES: [usize; 5] = [1, 2, 4, 8, 16];
-static MULTISCALAR_SIZES: [usize; 13] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 384, 512, 768, 1024];
+static MULTISCALAR_SIZES: [usize; 14] = [128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
 
 mod edwards_benches {
     use super::*;
@@ -84,10 +84,30 @@ mod multiscalar_benches {
     use curve25519_dalek::traits::MultiscalarMul;
     use curve25519_dalek::traits::VartimeMultiscalarMul;
     use curve25519_dalek::traits::VartimePrecomputedMultiscalarMul;
+    use curve25519_dalek_ng::traits::Identity;
+    use rand::prelude::SliceRandom;
 
     fn construct_scalars(n: usize) -> Vec<Scalar> {
         let mut rng = thread_rng();
         (0..n).map(|_| Scalar::random(&mut rng)).collect()
+    }
+
+    // Constructs scalars in {-1, 0, 1} with even distribution
+    fn construct_restricted_scalars(n: usize) -> Vec<Scalar> {
+        let mut rng = thread_rng();
+        let restricted_scalars = vec![-Scalar::one(), Scalar::zero(), Scalar::one()];
+        let output: Vec<Scalar> = (0..n).map(|_| *restricted_scalars.choose(&mut rng).unwrap())
+            .collect();
+        output
+    }
+
+    // Return ints in {-1, 0, 1} with even distribution
+    fn construct_restricted_ints(n: usize) -> Vec<i32> {
+        let mut rng = thread_rng();
+        let restricted_ints = vec![-1, 0, 1];
+        let output: Vec<i32> = (0..n).map(|_| *restricted_ints.choose(&mut rng).unwrap())
+            .collect();
+        output
     }
 
     fn construct_points(n: usize) -> Vec<EdwardsPoint> {
@@ -130,6 +150,93 @@ mod multiscalar_benches {
                 b.iter_batched(
                     || construct_scalars(size),
                     |scalars| EdwardsPoint::vartime_multiscalar_mul(&scalars, &points),
+                    BatchSize::SmallInput,
+                );
+            },
+            &MULTISCALAR_SIZES,
+        );
+    }
+
+    // This is the sum from using multiscalar mults
+    fn restricted_scalars_mul_fast(c: &mut Criterion) {
+        c.bench_function_over_inputs(
+            "Variable-time restricted-scalar-mul",
+            |b, &&size| {
+                let points = construct_points(size);
+                // Rerandomize the scalars for every call to prevent
+                // false timings from better caching (e.g., the CPU
+                // cache lifts exactly the right table entries for the
+                // benchmark into the highest cache levels).
+                b.iter_batched(
+                    || construct_restricted_scalars(size),
+                    |scalars| {
+                        assert_eq!(points.len(), scalars.len());
+                        // println!("points: {:?}", points);
+                        // println!("scalars: {:?}", scalars);
+                        EdwardsPoint::vartime_multiscalar_mul(&scalars, &points);
+                    },
+                    BatchSize::SmallInput,
+                );
+            },
+            &MULTISCALAR_SIZES,
+        );
+    }
+
+    // This is the sum from using naive multiplication and addition
+    fn restricted_scalars_mul_naive(c: &mut Criterion) {
+        c.bench_function_over_inputs(
+            "Variable-time restricted-scalar-mul using naive multiplication",
+            |b, &&size| {
+                let points = construct_points(size);
+                // Rerandomize the scalars for every call to prevent
+                // false timings from better caching (e.g., the CPU
+                // cache lifts exactly the right table entries for the
+                // benchmark into the highest cache levels).
+                b.iter_batched(
+                    || construct_restricted_ints(size),
+                    |ints| {
+                        let _mult_sum: EdwardsPoint = points
+                            .iter()
+                            .zip(ints.iter())
+                            .map(|(point, int)| point * match int {
+                                1 => Scalar::one(),
+                                0 => Scalar::zero(),
+                                -1 => -Scalar::one(),
+                                _ => Scalar::zero(),
+                            })
+                            .sum();
+                    },
+                    BatchSize::SmallInput,
+                );
+            },
+            &MULTISCALAR_SIZES,
+        );
+    }
+
+    // This is the sum from using simple selection 
+    fn restricted_scalars_add(c: &mut Criterion) {
+        c.bench_function_over_inputs(
+            "Variable-time restricted-scalar multiscalar multiplication using addition",
+            |b, &&size| {
+                let points = construct_points(size);
+                // Rerandomize the scalars for every call to prevent
+                // false timings from better caching (e.g., the CPU
+                // cache lifts exactly the right table entries for the
+                // benchmark into the highest cache levels).
+                b.iter_batched(
+                    || construct_restricted_ints(size),
+                    |ints| {
+                        let match_sum: EdwardsPoint = points
+                            .iter()
+                            .zip(ints.iter())
+                            .map(|(point, int)| match int {
+                                1 => *point,
+                                0 => EdwardsPoint::identity(),
+                                -1 => -point,
+                                _ => EdwardsPoint::identity(),
+                            })
+                            .sum();
+                    },
                     BatchSize::SmallInput,
                 );
             },
@@ -217,12 +324,15 @@ mod multiscalar_benches {
         // Lower the sample size to run the benchmarks faster
         config = Criterion::default().sample_size(15);
         targets =
-        consttime_multiscalar_mul,
-        vartime_multiscalar_mul,
-        vartime_precomputed_pure_static,
-        vartime_precomputed_00_pct_dynamic,
-        vartime_precomputed_20_pct_dynamic,
-        vartime_precomputed_50_pct_dynamic,
+        // consttime_multiscalar_mul,
+        // vartime_multiscalar_mul,
+        // vartime_precomputed_pure_static,
+        // vartime_precomputed_00_pct_dynamic,
+        // vartime_precomputed_20_pct_dynamic,
+        // vartime_precomputed_50_pct_dynamic,
+        restricted_scalars_mul_fast,
+        restricted_scalars_mul_naive,
+        restricted_scalars_add,
     }
 }
 
