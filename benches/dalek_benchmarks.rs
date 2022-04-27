@@ -266,7 +266,7 @@ mod multiscalar_benches {
                 b.iter_batched(
                     || construct_restricted_ints(size),
                     |ints| {
-                        EdwardsPoint = points
+                        let _: EdwardsPoint = points
                             .iter()
                             .zip(ints.iter())
                             .map(|(point, int)| match int {
@@ -275,7 +275,7 @@ mod multiscalar_benches {
                                 -1 => -point,
                                 _ => EdwardsPoint::identity(),
                             })
-                            .sum()
+                            .sum();
                     },
                     BatchSize::SmallInput,
                 );
