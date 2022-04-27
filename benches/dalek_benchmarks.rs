@@ -19,6 +19,10 @@ use curve25519_dalek::scalar::Scalar;
 static BATCH_SIZES: [usize; 5] = [1, 2, 4, 8, 16];
 static MULTISCALAR_SIZES: [usize; 14] = [128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
 
+static SECAGG_FULL_COMMIT_SIZES: [usize; 20] = [41, 82, 103, 164, 205, 328, 410, 656, 820, 1639, 2460, 4920, 6180, 9840, 12300, 19680, 24600, 39360, 49200, 98340];
+static SECAGG_TRI_COMMIT_SIZES: [usize; 5] = [8704, 14848, 27136, 51712, 100864];
+static SECAGG_VAR_COMMIT_SIZES: [(usize, u32); 11] = [(100864, 65536), (10752, 108), (8192, 60), (3584, 108), (51712, 65536), (491520, 3), (6656, 108), (14848, 65536), (27136, 65536), (8704, 65536), (4608, 108)];
+
 mod edwards_benches {
     use super::*;
 
@@ -86,6 +90,7 @@ mod multiscalar_benches {
     use curve25519_dalek::traits::VartimePrecomputedMultiscalarMul;
     use curve25519_dalek_ng::traits::Identity;
     use rand::prelude::SliceRandom;
+    use rand::Rng;
 
     fn construct_scalars(n: usize) -> Vec<Scalar> {
         let mut rng = thread_rng();
@@ -93,12 +98,26 @@ mod multiscalar_benches {
     }
 
     // Constructs scalars in {-1, 0, 1} with even distribution
-    fn construct_restricted_scalars(n: usize) -> Vec<Scalar> {
+    fn construct_small_restricted_scalars(n: usize) -> Vec<Scalar> {
         let mut rng = thread_rng();
         let restricted_scalars = vec![-Scalar::one(), Scalar::zero(), Scalar::one()];
         let output: Vec<Scalar> = (0..n).map(|_| *restricted_scalars.choose(&mut rng).unwrap())
             .collect();
         output
+    }
+
+    // Constructs scalars in [-bound/2, bound/2) with even distribution
+    fn construct_variable_restricted_scalars(n: usize, bound: u32) -> Vec<Scalar> {
+        let mut rng = thread_rng();
+
+        (0..n).map(|_| {
+            // Can't generate a scalar from a negative number, so generate positive scalars and negate half of them.
+            let mut rand_scalar = Scalar::from(rng.gen_range(0..bound/2));
+            if rng.gen_range(0..2) == 1 {
+                rand_scalar = -rand_scalar;
+            }
+            rand_scalar
+        }).collect()
     }
 
     // Return ints in {-1, 0, 1} with even distribution
@@ -140,7 +159,7 @@ mod multiscalar_benches {
 
     fn vartime_multiscalar_mul(c: &mut Criterion) {
         c.bench_function_over_inputs(
-            "Variable-time variable-base multiscalar multiplication",
+            "SecAgg: scalars in full range - Variable-time variable-base multiscalar multiplication",
             |b, &&size| {
                 let points = construct_points(size);
                 // Rerandomize the scalars for every call to prevent
@@ -153,7 +172,28 @@ mod multiscalar_benches {
                     BatchSize::SmallInput,
                 );
             },
-            &MULTISCALAR_SIZES,
+            &SECAGG_FULL_COMMIT_SIZES,
+        );
+    }
+
+    // Multiscalar mul with scalars in [-bound/2, bound/2) with even distribution
+    fn variable_restricted_vartime_multiscalar_mul(c: &mut Criterion) {
+        c.bench_function_over_inputs(
+            "SecAgg: scalars in [-bound/2, bound/2) - var-restricted variable-time variable-base multiscalar multiplication",
+            |b, &&params| {
+                let (size, bound) = params;
+                let points = construct_points(size);
+                // Rerandomize the scalars for every call to prevent
+                // false timings from better caching (e.g., the CPU
+                // cache lifts exactly the right table entries for the
+                // benchmark into the highest cache levels).
+                b.iter_batched(
+                    || construct_variable_restricted_scalars(size, bound),
+                    |scalars| EdwardsPoint::vartime_multiscalar_mul(&scalars, &points),
+                    BatchSize::SmallInput,
+                );
+            },
+            &SECAGG_VAR_COMMIT_SIZES,
         );
     }
 
@@ -168,7 +208,7 @@ mod multiscalar_benches {
                 // cache lifts exactly the right table entries for the
                 // benchmark into the highest cache levels).
                 b.iter_batched(
-                    || construct_restricted_scalars(size),
+                    || construct_small_restricted_scalars(size),
                     |scalars| {
                         assert_eq!(points.len(), scalars.len());
                         // println!("points: {:?}", points);
@@ -213,10 +253,10 @@ mod multiscalar_benches {
         );
     }
 
-    // This is the sum from using simple selection 
+    // This is the sum from using simple selection over {-1, 0, 1}
     fn restricted_scalars_add(c: &mut Criterion) {
         c.bench_function_over_inputs(
-            "Variable-time restricted-scalar multiscalar multiplication using addition",
+            "SecAgg: scalars in {-1, 0, 1} - Variable-time restricted-scalar multiscalar multiplication using addition",
             |b, &&size| {
                 let points = construct_points(size);
                 // Rerandomize the scalars for every call to prevent
@@ -226,7 +266,7 @@ mod multiscalar_benches {
                 b.iter_batched(
                     || construct_restricted_ints(size),
                     |ints| {
-                        let match_sum: EdwardsPoint = points
+                        EdwardsPoint = points
                             .iter()
                             .zip(ints.iter())
                             .map(|(point, int)| match int {
@@ -235,12 +275,12 @@ mod multiscalar_benches {
                                 -1 => -point,
                                 _ => EdwardsPoint::identity(),
                             })
-                            .sum();
+                            .sum()
                     },
                     BatchSize::SmallInput,
                 );
             },
-            &MULTISCALAR_SIZES,
+            &SECAGG_TRI_COMMIT_SIZES,
         );
     }
 
@@ -322,17 +362,18 @@ mod multiscalar_benches {
     criterion_group! {
         name = multiscalar_benches;
         // Lower the sample size to run the benchmarks faster
-        config = Criterion::default().sample_size(15);
+        config = Criterion::default().sample_size(10);
         targets =
         // consttime_multiscalar_mul,
-        // vartime_multiscalar_mul,
         // vartime_precomputed_pure_static,
         // vartime_precomputed_00_pct_dynamic,
         // vartime_precomputed_20_pct_dynamic,
         // vartime_precomputed_50_pct_dynamic,
-        restricted_scalars_mul_fast,
-        restricted_scalars_mul_naive,
-        restricted_scalars_add,
+        // restricted_scalars_mul_fast,
+        // restricted_scalars_mul_naive,
+        vartime_multiscalar_mul, // Multiscalar mul over the entire range of scalars
+        restricted_scalars_add,  // Multiscalar mul over scalars in {-1, 0, 1} (aka no multiplication, just point addition)
+        variable_restricted_vartime_multiscalar_mul, // Multiscalar mul over scalars in a variable range
     }
 }
 
