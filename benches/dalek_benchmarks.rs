@@ -159,7 +159,7 @@ mod multiscalar_benches {
 
     fn vartime_multiscalar_mul(c: &mut Criterion) {
         c.bench_function_over_inputs(
-            "SecAgg: scalars in full range - Variable-time variable-base multiscalar multiplication",
+            "SecAgg: scalars in full range",
             |b, &&size| {
                 let points = construct_points(size);
                 // Rerandomize the scalars for every call to prevent
@@ -179,7 +179,7 @@ mod multiscalar_benches {
     // Multiscalar mul with scalars in [-bound/2, bound/2) with even distribution
     fn variable_restricted_vartime_multiscalar_mul(c: &mut Criterion) {
         c.bench_function_over_inputs(
-            "SecAgg: scalars in [-bound/2, bound/2) - var-restricted variable-time variable-base multiscalar multiplication",
+            "SecAgg: scalars in [-bound/2, bound/2)",
             |b, &&params| {
                 let (size, bound) = params;
                 let points = construct_points(size);
@@ -256,7 +256,7 @@ mod multiscalar_benches {
     // This is the sum from using simple selection over {-1, 0, 1}
     fn restricted_scalars_add(c: &mut Criterion) {
         c.bench_function_over_inputs(
-            "SecAgg: scalars in {-1, 0, 1} - Variable-time restricted-scalar multiscalar multiplication using addition",
+            "SecAgg: scalars in {-1, 0, 1}",
             |b, &&size| {
                 let points = construct_points(size);
                 // Rerandomize the scalars for every call to prevent
