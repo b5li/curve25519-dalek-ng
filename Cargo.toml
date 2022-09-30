@@ -35,6 +35,14 @@ rand = "0.8"
 name = "dalek_benchmarks"
 harness = false
 
+[[bench]]
+name = "secagg_binary_input_benchmarks"
+harness = false
+
+[[bench]]
+name = "secagg_large_input_benchmarks"
+harness = false
+
 [dependencies]
 rand_core = { version = "0.6", default-features = false }
 byteorder = { version = "^1.2.3", default-features = false, features = ["i128"] }
