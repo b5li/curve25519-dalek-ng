@@ -21,9 +21,10 @@ static MULTISCALAR_SIZES: [usize; 14] = [128, 256, 512, 1024, 2048, 4096, 8192, 
 
 static SECAGG_FULL_COMMIT_SIZES: [usize; 0] = [];
 static SECAGG_TRI_COMMIT_SIZES: [usize; 0] = [];
-static SECAGG_VAR_COMMIT_SIZES: [(usize, u64); 19] = [
+static SECAGG_VAR_COMMIT_SIZES: [(usize, u64); 20] = [
     (128, 83886080000), // for committing to y
     (32, 65536), (64, 65536), (128, 65536), (256, 65536), (512, 65536), (1024, 65536), (2048, 65536), (4096, 65536), (8192, 65536), (16384, 65536), (32768, 65536), (65536, 65536), (131072, 65536), (262144, 65536), (524288, 65536), (1048576, 65536), (2097152, 65536), (4194304, 65536), // for committing to z
+    (4, 65536),                 // for committing to the four integers in the proof of l2 norm predicate
 ];
 
 mod edwards_benches {
