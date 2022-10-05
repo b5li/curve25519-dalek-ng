@@ -19,7 +19,7 @@ use curve25519_dalek::scalar::Scalar;
 static BATCH_SIZES: [usize; 5] = [1, 2, 4, 8, 16];
 static MULTISCALAR_SIZES: [usize; 14] = [128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
 
-static SECAGG_FULL_COMMIT_SIZES: [usize; 0] = [];
+static SECAGG_FULL_COMMIT_SIZES: [usize; 35] = [1, 2, 4, 7, 13, 26, 52, 103, 205, 410, 820, 1639, 3277, 6554, 13108, 26215, 52429, 104858, 3, 5, 10, 19, 37, 74, 147, 293, 586, 1171, 2341, 4682, 9363, 18725, 37450, 74899, 149797];
 static SECAGG_TRI_COMMIT_SIZES: [usize; 0] = [];
 static SECAGG_VAR_COMMIT_SIZES: [(usize, u64); 20] = [
     (128, 83886080000), // for committing to y
@@ -373,6 +373,7 @@ mod multiscalar_benches {
         // vartime_precomputed_00_pct_dynamic,
         // vartime_precomputed_20_pct_dynamic,
         // vartime_precomputed_50_pct_dynamic,
+        vartime_multiscalar_mul,
         // restricted_scalars_mul_fast,
         // restricted_scalars_mul_naive,
         // vartime_multiscalar_mul, // Multiscalar mul over the entire range of scalars
